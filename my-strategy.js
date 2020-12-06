@@ -10,10 +10,10 @@ const RepairAction = require('./model/repair-action');
 const Vec2Int = require('./model/vec2-int');
 
 const findWays = require('./findWays');
-const potencialFields = require('./potentialFields');
 
 let myPosition = null;
 const WAYS = {};
+const SIDES = [[-1, 0], [1, 0], [0, 1], [0, -1]];
 
 class MyStrategy {
     async getAction(playerView, debugInterface) {
@@ -25,7 +25,6 @@ class MyStrategy {
 
         const findWaysObj = findWays();
         let map = createMap(playerView.mapSize);
-        // playerView.currentTick === 1 && console.log(map);
         const actions = new Map();
         const myId = playerView.myId;
         const my = playerView.players.find(p => p.id === myId);
@@ -51,14 +50,10 @@ class MyStrategy {
                 units.push(e);
                 myPopulation += playerView.entityProperties.get(e.entityType).populationUse;
             }
-
         });
         const graph = new findWaysObj.Graph(map);
 
         playerView.currentTick === 1 && console.log(graph.toString());
-        //const myEntities = entities.filter(i => i.playerId === myId);
-        //const builders = myEntities.filter(i => BUILDERS_TYPES.indexOf(i.entityType) > -1);
-        //myEntities.filter(i => UNIT_TYPES.indexOf(i.entityType) > -1).forEach(u => myPopulation += playerView.entityProperties.get(u.entityType).populationUse);
         builders.forEach(b => {
             if (!myPopulation && b.entityType === entityTypes.BuilderBase) {
                 myPosition = b.position;
@@ -81,7 +76,7 @@ class MyStrategy {
 
                 actions.set(entity.id, new EntityAction(
                     null,
-                    needBuilding(playerView, entity, needHouse, needRangeBase),
+                    needBuilding(playerView, entity, needHouse, needRangeBase, map),
                     !needRepair ? new AttackAction(
                         null,
                         new AutoAttackAction(
@@ -181,23 +176,36 @@ class MyStrategy {
     }
 }
 
-function needBuilding(playerView, entity, needHouse, needRangeBase) {
+function needBuilding(playerView, entity, needHouse, needRangeBase, map) {
     if (needHouse) {
         const size = playerView.entityProperties.get(entityTypes.House).size;
         let x;
         let y;
-        if (entity.position.y - 1 - size > 0 && entity.position.x - 1 - size > 0) {
-            y = entity.position.y - 1;
-            x = entity.position.x - 1;
-        } else if (entity.position.y + 1 + size < playerView.mapSize && entity.position.x + 1 + size < playerView.mapSize) {
-            y = entity.position.y + 1;
-            x = entity.position.x + 1;
+        for (let i = 0; i < SIDES.length; i++) {
+            let hor = entity.position.x + SIDES[i][0];
+            let vert = entity.position.y + SIDES[i][1];
+            let allowBuild = hor >= 0 && vert >= 0 && hor + size < map.length && vert + size < map.length;
+            if (allowBuild) {
+                for (let iy = vert; iy < size; iy++) {
+                    for (let ix = hor; ix < size; ix++) {
+                        if (map[iy][ix] === 0) {
+                            allowBuild = false;
+                            break;
+                        }
+                    }
+                    if (!allowBuild) {
+                        break;
+                    }
+                }
+            }
+            if (allowBuild) {
+                x = hor;
+                y = vert;
+                break;
+            }
         }
-        //const y = entity.position.y - size > playerView.mapSize ? entity.position.y + 1 : entity.position.y - 1;
-        //const x = entity.position.x + size > playerView.mapSize ? entity.position.x - 1 : entity.position.x + 1;
-
-        // return new BuildAction(entityTypes.House, new Vec2Int(x, y));
-        return new BuildAction(entityTypes.House, new Vec2Int(x, y))
+        x && y && console.log(x, y);
+        return x && y ? new BuildAction(entityTypes.House, new Vec2Int(x, y)) : null;
     } else if (needRangeBase) {
         return new BuildAction(entityTypes.RangedBase, new Vec2Int(entity.position.x + 1, entity.position.y - 1))
     } else {
